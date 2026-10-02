@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Snake</title>
+  <title>Arcade Games</title>
   <style>
     html, body {
       margin: 0;
@@ -23,6 +23,37 @@
       padding: 24px;
       box-sizing: border-box;
       gap: 12px;
+    }
+
+    #game-selector {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 12px;
+    }
+
+    .game-nav-btn {
+      background: #0f0;
+      color: #000;
+      border: none;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .game-nav-btn:hover {
+      background: #0a0;
+    }
+
+    #game-title {
+      font-size: 24px;
+      font-weight: bold;
+      color: #0f0;
+      text-transform: uppercase;
+      min-width: 150px;
+      text-align: center;
     }
 
     #hud {
@@ -102,6 +133,12 @@
   </style>
 </head>
 <body>
+  <div id="game-selector">
+    <button class="game-nav-btn" onclick="prevGame()">← PREV</button>
+    <div id="game-title">SNAKE</div>
+    <button class="game-nav-btn" onclick="nextGame()">NEXT →</button>
+  </div>
+
   <div id="hud">
     <div>SCORE: <span id="score">0</span></div>
     <div>BEST: <span id="best-score">0</span></div>
@@ -116,10 +153,86 @@
   </div>
 
   <script>
+    // Game state
+    const games = ['snake', 'tetris', 'pong', 'space-invaders'];
+    let currentGameIndex = 0;
+    let currentGame = 'snake';
+
+    // Shared elements
+    const gameTitle = document.getElementById('game-title');
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const bestScoreEl = document.getElementById('best-score');
+    const overlay = document.getElementById('overlay');
+    const overlayTitle = document.getElementById('overlay-title');
+    const overlayMessage = document.getElementById('overlay-message');
+    const startButton = document.getElementById('start-button');
+
+    // Game switching
+    function switchGame(gameName) {
+      currentGame = gameName;
+      currentGameIndex = games.indexOf(gameName);
+      gameTitle.textContent = gameName.toUpperCase().replace('-', ' ');
+      
+      // Stop current game and reset
+      gameState = "ready";
+      overlay.classList.remove('hidden');
+      startButton.textContent = 'Start Game';
+      updateOverlayForGame();
+      
+      switch(gameName) {
+        case 'snake':
+          initSnake();
+          break;
+        case 'tetris':
+          initTetris();
+          break;
+        case 'pong':
+          initPong();
+          break;
+        case 'space-invaders':
+          initSpaceInvaders();
+          break;
+      }
+    }
+
+    function nextGame() {
+      currentGameIndex = (currentGameIndex + 1) % games.length;
+      switchGame(games[currentGameIndex]);
+    }
+
+    function prevGame() {
+      currentGameIndex = (currentGameIndex - 1 + games.length) % games.length;
+      switchGame(games[currentGameIndex]);
+    }
+
+    function updateOverlayForGame() {
+      switch(currentGame) {
+        case 'snake':
+          overlayTitle.textContent = 'SNAKE';
+          overlayMessage.textContent = 'Use arrow keys to move. Press Space to pause.';
+          break;
+        case 'tetris':
+          overlayTitle.textContent = 'TETRIS';
+          overlayMessage.textContent = 'Arrow keys to move, Space to rotate. Press Space to start.';
+          break;
+        case 'pong':
+          overlayTitle.textContent = 'PONG';
+          overlayMessage.textContent = 'W/S keys to move. Press Space to start.';
+          break;
+        case 'space-invaders':
+          overlayTitle.textContent = 'SPACE INVADERS';
+          overlayMessage.textContent = 'Arrow keys to move, Space to shoot. Press Space to start.';
+          break;
+      }
+    }
+
+    // ===== SNAKE GAME =====
     const COLS = 26;
     const ROWS = 26;
     const EMPTY = 0;
-    const SNAKE = 1;
+    const SNAKE_CELL = 1;
     const FRUIT = 2;
 
     const LEFT = 0;
@@ -133,20 +246,13 @@
     const KEY_DOWN = 40;
     const KEY_SPACE = 32;
     const KEY_ENTER = 13;
+    const KEY_W = 87;
+    const KEY_S = 83;
 
-    const BASE_MOVE_INTERVAL = 160;
-    const MIN_MOVE_INTERVAL = 80;
-    const SPEED_STEP = 5;
-
-    let canvas, ctx, keystate, score, highScore, lastMoveTime, queuedDirection, gameState;
+    let gameState = "ready";
+    let score = 0;
+    let highScore = 0;
     let audioContext = null;
-
-    const scoreEl = document.getElementById("score");
-    const bestScoreEl = document.getElementById("best-score");
-    const overlay = document.getElementById("overlay");
-    const overlayTitle = document.getElementById("overlay-title");
-    const overlayMessage = document.getElementById("overlay-message");
-    const startButton = document.getElementById("start-button");
 
     const grid = {
       width: null,
@@ -157,7 +263,6 @@
         this.width = c;
         this.height = r;
         this._grid = [];
-
         for (let x = 0; x < c; x++) {
           this._grid[x] = [];
           for (let y = 0; y < r; y++) {
@@ -196,25 +301,45 @@
       }
     };
 
-    function ensureAudio() {
+    // Tetris variables
+    let tetrisGrid, tetrisPiece, tetrisX, tetrisY, tetrisScore, tetrisLastTime, tetrisSpeed;
+    const TETRIS_WIDTH = 10;
+    const TETRIS_HEIGHT = 20;
+    const BLOCK_SIZE = 20;
+
+    const tetrisShapes = [
+      [[1, 1, 1, 1]], // I
+      [[1, 1], [1, 1]], // O
+      [[0, 1, 0], [1, 1, 1]], // T
+      [[1, 0, 0], [1, 1, 1]], // L
+      [[0, 0, 1], [1, 1, 1]], // J
+      [[0, 1, 1], [1, 1, 0]], // S
+      [[1, 1, 0], [0, 1, 1]]  // Z
+    ];
+
+    // Pong variables
+    let pongPaddleY, pongBallX, pongBallY, pongBallDX, pongBallDY, pongScore, pongEnemyY, pongLastTime;
+    const PONG_WIDTH = 20;
+    const PONG_HEIGHT = 30;
+    const PONG_BALL_SIZE = 2;
+
+    // Space Invaders variables
+    let siPlayerX, siPlayerY, siBullets, siEnemies, siScore, siLastTime, siLevel;
+    const SI_PLAYER_SIZE = 3;
+    const SI_WIDTH = 32;
+    const SI_HEIGHT = 24;
+
+    function playTone(type) {
       if (!audioContext) {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if (AudioCtx) {
           audioContext = new AudioCtx();
         }
       }
-
-      if (audioContext && audioContext.state === "suspended") {
-        audioContext.resume();
-      }
-    }
-
-    function playTone(type) {
       if (!audioContext) return;
 
       const oscillator = audioContext.createOscillator();
       const gain = audioContext.createGain();
-
       oscillator.connect(gain);
       gain.connect(audioContext.destination);
 
@@ -246,7 +371,7 @@
 
     function getHighScore() {
       try {
-        return Number(localStorage.getItem("snake-high-score")) || 0;
+        return Number(localStorage.getItem(`arcade-${currentGame}-high-score`)) || 0;
       } catch (e) {
         return 0;
       }
@@ -254,10 +379,8 @@
 
     function saveHighScore() {
       try {
-        localStorage.setItem("snake-high-score", String(highScore));
-      } catch (e) {
-        // Ignore if storage is unavailable.
-      }
+        localStorage.setItem(`arcade-${currentGame}-high-score`, String(highScore));
+      } catch (e) {}
     }
 
     function updateHud() {
@@ -265,9 +388,17 @@
       bestScoreEl.textContent = String(highScore);
     }
 
+    // ===== SNAKE FUNCTIONS =====
+    function initSnake() {
+      canvas.width = COLS * 20;
+      canvas.height = ROWS * 20;
+      score = 0;
+      highScore = getHighScore();
+      updateHud();
+    }
+
     function setFood() {
       const empty = [];
-
       for (let x = 0; x < grid.width; x++) {
         for (let y = 0; y < grid.height; y++) {
           if (grid.get(x, y) === EMPTY) {
@@ -275,255 +406,475 @@
           }
         }
       }
-
-      if (empty.length === 0) {
-        return false;
-      }
-
+      if (empty.length === 0) return false;
       const randpos = empty[Math.floor(Math.random() * empty.length)];
       grid.set(FRUIT, randpos.x, randpos.y);
       return true;
     }
 
-    function startGame() {
-      ensureAudio();
+    function startSnakeGame() {
       score = 0;
-      lastMoveTime = 0;
-      queuedDirection = null;
+      let queuedDirection = null;
       gameState = "playing";
-
       grid.init(EMPTY, COLS, ROWS);
-
-      const sp = {
-        x: Math.floor(COLS / 2),
-        y: ROWS - 1
-      };
-
+      const sp = { x: Math.floor(COLS / 2), y: ROWS - 1 };
       snake.init(UP, sp.x, sp.y);
-      grid.set(SNAKE, sp.x, sp.y);
+      grid.set(SNAKE_CELL, sp.x, sp.y);
       setFood();
-
       overlay.classList.add("hidden");
       updateHud();
       playTone("start");
+
+      function snakeUpdate(currentTime) {
+        if (gameState !== "playing") return;
+        const interval = 160 - (score * 5);
+        if (currentTime - (window.snakeLastMoveTime || 0) > interval) {
+          let nx = snake.last.x;
+          let ny = snake.last.y;
+          switch (snake.direction) {
+            case LEFT: nx--; break;
+            case UP: ny--; break;
+            case RIGHT: nx++; break;
+            case DOWN: ny++; break;
+          }
+          const hitWall = nx < 0 || nx > grid.width - 1 || ny < 0 || ny > grid.height - 1;
+          const hitSelf = grid.get(nx, ny) === SNAKE_CELL;
+          if (hitWall || hitSelf) {
+            endGame();
+            return;
+          }
+          if (grid.get(nx, ny) === FRUIT) {
+            score++;
+            if (score > highScore) {
+              highScore = score;
+              saveHighScore();
+            }
+            updateHud();
+            playTone("eat");
+            setFood();
+          } else {
+            const tail = snake.remove();
+            grid.set(EMPTY, tail.x, tail.y);
+          }
+          grid.set(SNAKE_CELL, nx, ny);
+          snake.insert(nx, ny);
+          window.snakeLastMoveTime = currentTime;
+        }
+      }
+
+      function snakeDraw() {
+        const tw = canvas.width / grid.width;
+        const th = canvas.height / grid.height;
+        for (let x = 0; x < grid.width; x++) {
+          for (let y = 0; y < grid.height; y++) {
+            ctx.fillStyle = "#000";
+            ctx.fillRect(x * tw, y * th, tw, th);
+            switch (grid.get(x, y)) {
+              case SNAKE_CELL:
+                ctx.fillStyle = (x === snake.last.x && y === snake.last.y) ? "#0f0" : "#0a0";
+                ctx.fillRect(x * tw, y * th, tw, th);
+                break;
+              case FRUIT:
+                ctx.fillStyle = "#f00";
+                ctx.fillRect(x * tw, y * th, tw, th);
+                break;
+            }
+          }
+        }
+      }
+
+      function snakeLoop(currentTime) {
+        snakeUpdate(currentTime);
+        snakeDraw();
+        if (gameState !== "ready" && currentGame === "snake") {
+          window.requestAnimationFrame(snakeLoop);
+        }
+      }
+
+      window.requestAnimationFrame(snakeLoop);
     }
 
-    function setPausedState() {
-      gameState = "paused";
-      overlayTitle.textContent = "PAUSED";
-      overlayMessage.textContent = "Press Space to resume, or use the button below.";
-      startButton.textContent = "Resume";
-      overlay.classList.remove("hidden");
+    // ===== TETRIS FUNCTIONS =====
+    function initTetris() {
+      canvas.width = TETRIS_WIDTH * BLOCK_SIZE;
+      canvas.height = TETRIS_HEIGHT * BLOCK_SIZE;
+      tetrisGrid = Array(TETRIS_HEIGHT).fill(null).map(() => Array(TETRIS_WIDTH).fill(0));
+      tetrisScore = 0;
+      highScore = getHighScore();
+      updateHud();
     }
 
-    function resumeGame() {
-      if (gameState !== "paused") return;
+    function startTetrisGame() {
+      tetrisScore = 0;
+      tetrisSpeed = 500;
+      tetrisLastTime = 0;
       gameState = "playing";
       overlay.classList.add("hidden");
+      updateHud();
+
+      function getTetrisPiece() {
+        const shape = tetrisShapes[Math.floor(Math.random() * tetrisShapes.length)];
+        return { shape, x: Math.floor(TETRIS_WIDTH / 2) - 1, y: 0 };
+      }
+
+      tetrisPiece = getTetrisPiece();
+
+      function canPlacePiece(piece, x, y) {
+        for (let row = 0; row < piece.shape.length; row++) {
+          for (let col = 0; col < piece.shape[row].length; col++) {
+            if (piece.shape[row][col]) {
+              const newX = x + col;
+              const newY = y + row;
+              if (newX < 0 || newX >= TETRIS_WIDTH || newY >= TETRIS_HEIGHT) return false;
+              if (newY >= 0 && tetrisGrid[newY][newX]) return false;
+            }
+          }
+        }
+        return true;
+      }
+
+      function placePiece(piece) {
+        for (let row = 0; row < piece.shape.length; row++) {
+          for (let col = 0; col < piece.shape[row].length; col++) {
+            if (piece.shape[row][col]) {
+              const y = piece.y + row;
+              if (y >= 0) tetrisGrid[y][piece.x + col] = 1;
+            }
+          }
+        }
+        clearTetrisLines();
+        tetrisPiece = getTetrisPiece();
+        if (!canPlacePiece(tetrisPiece, tetrisPiece.x, tetrisPiece.y)) {
+          endGame();
+        }
+      }
+
+      function clearTetrisLines() {
+        for (let y = 0; y < TETRIS_HEIGHT; y++) {
+          if (tetrisGrid[y].every(cell => cell)) {
+            tetrisGrid.splice(y, 1);
+            tetrisGrid.unshift(Array(TETRIS_WIDTH).fill(0));
+            tetrisScore += 10;
+            if (tetrisScore > highScore) {
+              highScore = tetrisScore;
+              saveHighScore();
+            }
+          }
+        }
+      }
+
+      function tetrisUpdate(currentTime) {
+        if (gameState !== "playing") return;
+        if (currentTime - (tetrisLastTime || 0) > tetrisSpeed) {
+          if (canPlacePiece(tetrisPiece, tetrisPiece.x, tetrisPiece.y + 1)) {
+            tetrisPiece.y++;
+          } else {
+            placePiece(tetrisPiece);
+          }
+          tetrisLastTime = currentTime;
+        }
+      }
+
+      function tetrisDraw() {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#0f0";
+        ctx.lineWidth = 1;
+        for (let y = 0; y < TETRIS_HEIGHT; y++) {
+          for (let x = 0; x < TETRIS_WIDTH; x++) {
+            ctx.strokeRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            if (tetrisGrid[y][x]) {
+              ctx.fillStyle = "#0f0";
+              ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            }
+          }
+        }
+        ctx.fillStyle = "#0f0";
+        for (let row = 0; row < tetrisPiece.shape.length; row++) {
+          for (let col = 0; col < tetrisPiece.shape[row].length; col++) {
+            if (tetrisPiece.shape[row][col]) {
+              ctx.fillRect((tetrisPiece.x + col) * BLOCK_SIZE, (tetrisPiece.y + row) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            }
+          }
+        }
+      }
+
+      document.addEventListener('keydown', function tetrisKeyHandler(e) {
+        if (currentGame !== 'tetris') {
+          document.removeEventListener('keydown', tetrisKeyHandler);
+          return;
+        }
+        if (e.key === 'ArrowLeft' && canPlacePiece(tetrisPiece, tetrisPiece.x - 1, tetrisPiece.y)) {
+          tetrisPiece.x--;
+        } else if (e.key === 'ArrowRight' && canPlacePiece(tetrisPiece, tetrisPiece.x + 1, tetrisPiece.y)) {
+          tetrisPiece.x++;
+        }
+      });
+
+      function tetrisLoop(currentTime) {
+        tetrisUpdate(currentTime);
+        tetrisDraw();
+        updateHud();
+        if (gameState !== "ready" && currentGame === "tetris") {
+          window.requestAnimationFrame(tetrisLoop);
+        }
+      }
+
+      window.requestAnimationFrame(tetrisLoop);
+    }
+
+    // ===== PONG FUNCTIONS =====
+    function initPong() {
+      canvas.width = PONG_WIDTH * 20;
+      canvas.height = PONG_HEIGHT * 20;
+      pongPaddleY = PONG_HEIGHT / 2;
+      pongBallX = PONG_WIDTH / 2;
+      pongBallY = PONG_HEIGHT / 2;
+      pongBallDX = 0.3;
+      pongBallDY = 0.3;
+      pongScore = 0;
+      pongEnemyY = PONG_HEIGHT / 2;
+      highScore = getHighScore();
+      updateHud();
+    }
+
+    function startPongGame() {
+      pongScore = 0;
+      gameState = "playing";
+      overlay.classList.add("hidden");
+      updateHud();
+
+      const keyState = {};
+      document.addEventListener('keydown', (e) => {
+        keyState[e.key.toLowerCase()] = true;
+      });
+      document.addEventListener('keyup', (e) => {
+        keyState[e.key.toLowerCase()] = false;
+      });
+
+      function pongUpdate() {
+        if (gameState !== "playing") return;
+        pongBallX += pongBallDX;
+        pongBallY += pongBallDY;
+
+        if (pongBallY <= 0 || pongBallY >= PONG_HEIGHT - 1) {
+          pongBallDY = -pongBallDY;
+        }
+
+        const paddleSize = 4;
+        if (pongBallX <= 1 && pongBallY >= pongPaddleY - paddleSize && pongBallY <= pongPaddleY + paddleSize) {
+          pongBallDX = -pongBallDX;
+          pongScore++;
+          if (pongScore > highScore) {
+            highScore = pongScore;
+            saveHighScore();
+          }
+          playTone("eat");
+        }
+
+        if (pongBallX >= PONG_WIDTH - 2 && pongBallY >= pongEnemyY - paddleSize && pongBallY <= pongEnemyY + paddleSize) {
+          pongBallDX = -pongBallDX;
+        }
+
+        if (pongBallX < 0 || pongBallX > PONG_WIDTH) {
+          endGame();
+          return;
+        }
+
+        if (keyState['w'] && pongPaddleY > 0) pongPaddleY -= 0.5;
+        if (keyState['s'] && pongPaddleY < PONG_HEIGHT) pongPaddleY += 0.5;
+
+        if (pongEnemyY < pongBallY - 1) pongEnemyY += 0.4;
+        if (pongEnemyY > pongBallY + 1) pongEnemyY -= 0.4;
+      }
+
+      function pongDraw() {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const blockSize = 20;
+        ctx.fillStyle = "#0f0";
+        ctx.fillRect(0, pongPaddleY * blockSize - blockSize * 2, blockSize, blockSize * 4);
+        ctx.fillRect(PONG_WIDTH * blockSize - blockSize, pongEnemyY * blockSize - blockSize * 2, blockSize, blockSize * 4);
+        ctx.fillRect(pongBallX * blockSize - blockSize / 2, pongBallY * blockSize - blockSize / 2, blockSize, blockSize);
+      }
+
+      function pongLoop() {
+        pongUpdate();
+        pongDraw();
+        updateHud();
+        if (gameState !== "ready" && currentGame === "pong") {
+          window.requestAnimationFrame(pongLoop);
+        }
+      }
+
+      window.requestAnimationFrame(pongLoop);
+    }
+
+    // ===== SPACE INVADERS FUNCTIONS =====
+    function initSpaceInvaders() {
+      canvas.width = SI_WIDTH * 20;
+      canvas.height = SI_HEIGHT * 20;
+      siPlayerX = SI_WIDTH / 2;
+      siPlayerY = SI_HEIGHT - 2;
+      siBullets = [];
+      siEnemies = [];
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 5; j++) {
+          siEnemies.push({ x: j * 4 + 2, y: i * 3 + 1, alive: true });
+        }
+      }
+      siScore = 0;
+      siLevel = 1;
+      highScore = getHighScore();
+      updateHud();
+    }
+
+    function startSpaceInvadersGame() {
+      siScore = 0;
+      gameState = "playing";
+      overlay.classList.add("hidden");
+      updateHud();
+
+      const keyState = {};
+      document.addEventListener('keydown', (e) => {
+        keyState[e.key.toLowerCase()] = true;
+        if (e.key === ' ' && currentGame === 'space-invaders') {
+          siBullets.push({ x: siPlayerX, y: siPlayerY - 1 });
+          playTone("eat");
+        }
+      });
+      document.addEventListener('keyup', (e) => {
+        keyState[e.key.toLowerCase()] = false;
+      });
+
+      function siUpdate() {
+        if (gameState !== "playing") return;
+
+        if (keyState['arrowleft'] && siPlayerX > 0) siPlayerX--;
+        if (keyState['arrowright'] && siPlayerX < SI_WIDTH - 1) siPlayerX++;
+
+        for (let i = siBullets.length - 1; i >= 0; i--) {
+          siBullets[i].y--;
+          if (siBullets[i].y < 0) {
+            siBullets.splice(i, 1);
+            continue;
+          }
+
+          for (let j = siEnemies.length - 1; j >= 0; j--) {
+            if (siEnemies[j].alive && Math.abs(siBullets[i].x - siEnemies[j].x) < 1 && Math.abs(siBullets[i].y - siEnemies[j].y) < 1) {
+              siEnemies[j].alive = false;
+              siBullets.splice(i, 1);
+              siScore += 10;
+              if (siScore > highScore) {
+                highScore = siScore;
+                saveHighScore();
+              }
+              break;
+            }
+          }
+        }
+
+        siEnemies.forEach(enemy => {
+          if (enemy.alive) {
+            enemy.y += 0.1;
+            if (enemy.y >= SI_HEIGHT) {
+              endGame();
+            }
+          }
+        });
+
+        if (siEnemies.every(e => !e.alive)) {
+          siLevel++;
+          initSpaceInvaders();
+          startSpaceInvadersGame();
+        }
+      }
+
+      function siDraw() {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const blockSize = 20;
+        ctx.fillStyle = "#0f0";
+        ctx.fillRect(siPlayerX * blockSize, siPlayerY * blockSize, blockSize, blockSize);
+
+        ctx.fillStyle = "#0a0";
+        siEnemies.forEach(enemy => {
+          if (enemy.alive) {
+            ctx.fillRect(enemy.x * blockSize, enemy.y * blockSize, blockSize, blockSize);
+          }
+        });
+
+        ctx.fillStyle = "#f00";
+        siBullets.forEach(bullet => {
+          ctx.fillRect(bullet.x * blockSize, bullet.y * blockSize, blockSize / 2, blockSize);
+        });
+      }
+
+      function siLoop() {
+        siUpdate();
+        siDraw();
+        updateHud();
+        if (gameState !== "ready" && currentGame === "space-invaders") {
+          window.requestAnimationFrame(siLoop);
+        }
+      }
+
+      window.requestAnimationFrame(siLoop);
     }
 
     function endGame() {
       gameState = "gameover";
-
-      if (score > highScore) {
-        highScore = score;
-        saveHighScore();
-      }
-
-      updateHud();
-      overlayTitle.textContent = "GAME OVER";
-      overlayMessage.textContent = "Final score: " + score + ". Press Enter or click below to play again.";
-      startButton.textContent = "Play Again";
       overlay.classList.remove("hidden");
+      overlayTitle.textContent = "GAME OVER";
+      overlayMessage.textContent = `Final score: ${score || tetrisScore || pongScore || siScore}. Press Space to restart.`;
+      startButton.textContent = "Play Again";
       playTone("gameover");
     }
 
-    function handleDirectionInput(nextDirection) {
-      if (gameState !== "playing") {
-        return;
-      }
-
-      if (snake.direction === null) {
-        snake.direction = nextDirection;
-        return;
-      }
-
-      const oppositeDirection = (snake.direction + 2) % 4;
-      if (nextDirection === oppositeDirection) {
-        return;
-      }
-
-      if (queuedDirection === null || queuedDirection !== nextDirection) {
-        queuedDirection = nextDirection;
-      }
-    }
-
-    function moveSnake() {
-      if (queuedDirection !== null) {
-        const nextDir = queuedDirection;
-        const oppositeDirection = (snake.direction + 2) % 4;
-
-        if (nextDir !== oppositeDirection) {
-          snake.direction = nextDir;
+    // Setup event listeners
+    document.addEventListener('keydown', (e) => {
+      if (e.keyCode === KEY_SPACE) {
+        e.preventDefault();
+        if (gameState === "ready") {
+          if (currentGame === "snake") startSnakeGame();
+          else if (currentGame === "tetris") startTetrisGame();
+          else if (currentGame === "pong") startPongGame();
+          else if (currentGame === "space-invaders") startSpaceInvadersGame();
+        } else if (gameState === "gameover") {
+          switchGame(currentGame);
         }
-
-        queuedDirection = null;
-      }
-
-      let nx = snake.last.x;
-      let ny = snake.last.y;
-
-      switch (snake.direction) {
-        case LEFT:
-          nx--;
-          break;
-        case UP:
-          ny--;
-          break;
-        case RIGHT:
-          nx++;
-          break;
-        case DOWN:
-          ny++;
-          break;
-      }
-
-      const hitWall = nx < 0 || nx > grid.width - 1 || ny < 0 || ny > grid.height - 1;
-      const hitSelf = grid.get(nx, ny) === SNAKE;
-
-      if (hitWall || hitSelf) {
-        endGame();
-        return;
-      }
-
-      if (grid.get(nx, ny) === FRUIT) {
-        score++;
-
-        if (score > highScore) {
-          highScore = score;
-          saveHighScore();
-        }
-
-        updateHud();
-        playTone("eat");
-        setFood();
-      } else {
-        const tail = snake.remove();
-        grid.set(EMPTY, tail.x, tail.y);
-      }
-
-      grid.set(SNAKE, nx, ny);
-      snake.insert(nx, ny);
-      lastMoveTime = performance.now();
-    }
-
-    function update(currentTime) {
-      if (gameState !== "playing") {
-        return;
-      }
-
-      const interval = Math.max(MIN_MOVE_INTERVAL, BASE_MOVE_INTERVAL - (score * SPEED_STEP));
-
-      if (currentTime - lastMoveTime > interval) {
-        moveSnake();
-      }
-    }
-
-    function draw() {
-      const tw = canvas.width / grid.width;
-      const th = canvas.height / grid.height;
-
-      for (let x = 0; x < grid.width; x++) {
-        for (let y = 0; y < grid.height; y++) {
-          ctx.fillStyle = "#000";
-          ctx.fillRect(x * tw, y * th, tw, th);
-
-          switch (grid.get(x, y)) {
-            case SNAKE:
-              if (x === snake.last.x && y === snake.last.y) {
-                ctx.fillStyle = "#0f0";
-              } else {
-                ctx.fillStyle = "#0a0";
-              }
-              ctx.fillRect(x * tw, y * th, tw, th);
-              break;
-            case FRUIT:
-              ctx.fillStyle = "#f00";
-              ctx.fillRect(x * tw, y * th, tw, th);
-              break;
+      } else if (currentGame === 'snake' && [KEY_LEFT, KEY_UP, KEY_RIGHT, KEY_DOWN].includes(e.keyCode)) {
+        e.preventDefault();
+        if (gameState === "playing") {
+          const dirMap = { [KEY_LEFT]: LEFT, [KEY_UP]: UP, [KEY_RIGHT]: RIGHT, [KEY_DOWN]: DOWN };
+          const dir = dirMap[e.keyCode];
+          if (snake.direction === null) {
+            snake.direction = dir;
+          } else {
+            const opp = (snake.direction + 2) % 4;
+            if (dir !== opp) {
+              window.snakeQueuedDir = dir;
+            }
           }
         }
       }
-    }
+    });
 
-    function loop(currentTime) {
-      update(currentTime);
-      draw();
-      window.requestAnimationFrame(loop);
-    }
+    startButton.addEventListener('click', () => {
+      if (gameState === "ready") {
+        if (currentGame === "snake") startSnakeGame();
+        else if (currentGame === "tetris") startTetrisGame();
+        else if (currentGame === "pong") startPongGame();
+        else if (currentGame === "space-invaders") startSpaceInvadersGame();
+      } else if (gameState === "gameover") {
+        switchGame(currentGame);
+      }
+    });
 
-    function setupEvents() {
-      document.addEventListener("keydown", function(evt) {
-        const key = evt.keyCode || evt.which;
-
-        if ([KEY_LEFT, KEY_UP, KEY_RIGHT, KEY_DOWN, KEY_SPACE].includes(key)) {
-          evt.preventDefault();
-        }
-
-        if (key === KEY_SPACE) {
-          if (gameState === "playing") {
-            setPausedState();
-          } else if (gameState === "paused") {
-            resumeGame();
-          }
-          return;
-        }
-
-        if (key === KEY_ENTER && (gameState === "gameover" || gameState === "ready")) {
-          startGame();
-          return;
-        }
-
-        const directionMap = {
-          [KEY_LEFT]: LEFT,
-          [KEY_UP]: UP,
-          [KEY_RIGHT]: RIGHT,
-          [KEY_DOWN]: DOWN
-        };
-
-        if (Object.prototype.hasOwnProperty.call(directionMap, key)) {
-          handleDirectionInput(directionMap[key]);
-        }
-      });
-
-      startButton.addEventListener("click", function() {
-        if (gameState === "paused") {
-          resumeGame();
-        } else {
-          startGame();
-        }
-      });
-    }
-
-    function main() {
-      canvas = document.getElementById("game-canvas");
-      canvas.width = COLS * 20;
-      canvas.height = ROWS * 20;
-      ctx = canvas.getContext("2d");
-
-      highScore = getHighScore();
-      updateHud();
-      keystate = {};
-      gameState = "ready";
-      overlayTitle.textContent = "SNAKE";
-      overlayMessage.textContent = "Use the arrow keys to move. Press Space to pause.";
-      startButton.textContent = "Start Game";
-      overlay.classList.remove("hidden");
-      setupEvents();
-      window.requestAnimationFrame(loop);
-    }
-
-    main();
+    // Initialize with Snake
+    initSnake();
   </script>
 </body>
 </html>
