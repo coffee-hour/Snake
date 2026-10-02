@@ -11,10 +11,6 @@
       --panel: rgba(10, 28, 22, 0.8);
       --panel-border: rgba(92, 255, 170, 0.5);
       --grid: rgba(255, 255, 255, 0.08);
-      --snake-dark: #0c6e3c;
-      --snake-light: #54ff9a;
-      --snake-head: #9cffbf;
-      --fruit: #ff4d6d;
       --text: #eafef3;
       --shadow: rgba(0, 0, 0, 0.35);
     }
@@ -30,18 +26,16 @@
 
     body {
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       position: relative;
       padding: 24px;
       box-sizing: border-box;
+      gap: 12px;
     }
 
     #hud {
-      position: fixed;
-      top: 18px;
-      left: 50%;
-      transform: translateX(-50%);
       display: flex;
       gap: 16px;
       z-index: 20;
@@ -79,6 +73,8 @@
       border: 5px solid rgba(86, 255, 165, 0.8);
       background: #0d2819;
       box-shadow: 0 0 28px rgba(84, 255, 154, 0.22), 0 12px 30px rgba(0, 0, 0, 0.45);
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
     }
 
     #overlay {
@@ -153,6 +149,8 @@
       <span id="best-score" class="value">0</span>
     </div>
   </div>
+
+  <canvas id="game-canvas"></canvas>
 
   <div id="overlay">
     <h1 id="overlay-title">Snake</h1>
@@ -322,11 +320,12 @@
       }
 
       if (empty.length === 0) {
-        return;
+        return false;
       }
 
       const randpos = empty[Math.floor(Math.random() * empty.length)];
       grid.set(FRUIT, randpos.x, randpos.y);
+      return true;
     }
 
     function startGame() {
@@ -482,7 +481,7 @@
 
       for (let x = 0; x < grid.width; x++) {
         for (let y = 0; y < grid.height; y++) {
-          ctx.fillStyle = "#0d2819";
+          ctx.fillStyle = "#0f0f0f";
           ctx.fillRect(x * tw, y * th, tw, th);
 
           ctx.strokeStyle = "rgba(255,255,255,0.08)";
@@ -490,23 +489,16 @@
 
           switch (grid.get(x, y)) {
             case SNAKE:
-              const bodyX = x * tw;
-              const bodyY = y * th;
-              const bodyPadding = 2;
-
               if (x === snake.last.x && y === snake.last.y) {
-                ctx.fillStyle = "#9cffbf";
+                ctx.fillStyle = "#00FF00";
               } else {
-                ctx.fillStyle = "#54ff9a";
+                ctx.fillStyle = "#008000";
               }
-
-              ctx.fillRect(bodyX + bodyPadding, bodyY + bodyPadding, tw - bodyPadding * 2, th - bodyPadding * 2);
+              ctx.fillRect(x * tw, y * th, tw, th);
               break;
             case FRUIT:
-              ctx.fillStyle = "#ff4d6d";
-              ctx.beginPath();
-              ctx.arc(x * tw + tw / 2, y * th + th / 2, Math.min(tw, th) * 0.32, 0, Math.PI * 2);
-              ctx.fill();
+              ctx.fillStyle = "#FF0000";
+              ctx.fillRect(x * tw, y * th, tw, th);
               break;
           }
         }
@@ -517,15 +509,6 @@
       update(currentTime);
       draw();
       window.requestAnimationFrame(loop);
-    }
-
-    function prepareCanvas() {
-      canvas = document.createElement("canvas");
-      canvas.width = COLS * 22;
-      canvas.height = ROWS * 22;
-      ctx = canvas.getContext("2d");
-      document.body.appendChild(canvas);
-      canvas.style.marginTop = "18px";
     }
 
     function setupEvents() {
@@ -572,9 +555,13 @@
     }
 
     function main() {
+      canvas = document.getElementById("game-canvas");
+      canvas.width = COLS * 20;
+      canvas.height = ROWS * 20;
+      ctx = canvas.getContext("2d");
+
       highScore = getHighScore();
       updateHud();
-      prepareCanvas();
       keystate = {};
       gameState = "ready";
       overlayTitle.textContent = "Snake";
